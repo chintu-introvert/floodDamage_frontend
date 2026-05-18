@@ -60,15 +60,20 @@ export default function Home() {
   // Fetch only pending assessments from local DB
   const localPending = useLiveQuery(() => db.assessments.filter(a => !a.synced).toArray()) || [];
   
-  // Combine for metrics
-  const totalAssessments = serverData.assessments.length + localPending.length;
-  const pendingSyncCount = localPending.length;
-  
-  // Combine all for condition breakdown and map
+  // Combine only unique pending and server data, deduplicating by siteId
+  const pendingSiteIds = new Set(localPending.map(a => String(a.siteId)));
+  const uniqueServerAssessments = serverData.assessments
+    .map(a => ({ ...a, synced: true, siteId: String(a.id || a.siteId) }))
+    .filter(a => !pendingSiteIds.has(a.siteId));
+
   const allAssessments = [
-    ...serverData.assessments.map(a => ({ ...a, synced: true })),
+    ...uniqueServerAssessments,
     ...localPending
   ];
+
+  // Combine for metrics
+  const totalAssessments = allAssessments.length;
+  const pendingSyncCount = localPending.length;
 
   const conditionCounts = allAssessments.reduce((acc, curr) => {
     const cond = curr.condition || curr.cond;
@@ -78,8 +83,9 @@ export default function Home() {
     return acc;
   }, { Good: 0, Moderate: 0, Bad: 0 } as Record<string, number>);
 
-  const localPendingChickens = localPending.reduce((acc, curr) => acc + (Number(curr.totalChickens) || 0), 0);
-  const totalChickensCount = serverData.totalChickens + localPendingChickens;
+  const totalChickensCount = allAssessments.reduce((acc, curr) => 
+    acc + (Number(curr.totalChickens || curr.total_chickens) || 0), 0
+  );
 
   return (
     <div className="flex flex-col h-full bg-gray-50">

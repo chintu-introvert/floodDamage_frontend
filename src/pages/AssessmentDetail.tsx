@@ -126,18 +126,6 @@ export default function AssessmentDetail() {
           <span className="font-medium">Back</span>
         </button>
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchFromServer}
-            disabled={isFetchingServer || !navigator.onLine}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors border ${isFetchingServer || !navigator.onLine
-                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                : 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200'
-              }`}
-            title="Refresh from server"
-          >
-            <RefreshCw size={16} className={isFetchingServer ? 'animate-spin' : ''} />
-            Refresh
-          </button>
           <Link
             to={`/new?edit=${displayAssessment!.siteId}`}
             className="flex items-center gap-1.5 text-primary bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg font-medium transition-colors border border-orange-200"

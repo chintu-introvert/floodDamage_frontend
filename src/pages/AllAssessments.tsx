@@ -58,8 +58,12 @@ export default function AllAssessments() {
   // Fetch only pending assessments from local DB
   const localAssessments = useLiveQuery(() => db.assessments.filter(a => !a.synced).reverse().toArray());
 
-  // Combine local (pending) and server (synced) data
-  const assessments = [...(localAssessments || []), ...serverData].sort((a, b) =>
+  // Combine local (pending) and server (synced) data, deduplicating by siteId
+  const localPending = localAssessments || [];
+  const localSiteIds = new Set(localPending.map(a => a.siteId));
+  const uniqueServerData = serverData.filter(a => !localSiteIds.has(a.siteId));
+
+  const assessments = [...localPending, ...uniqueServerData].sort((a, b) =>
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 

@@ -46,30 +46,54 @@ export default function NewAssessment() {
   );
 
   useEffect(() => {
-    if (existingAssessment) {
-      setLatitude(existingAssessment.latitude);
-      setLongitude(existingAssessment.longitude);
-      setAddress(existingAssessment.address);
-      setAssessorName(existingAssessment.assessorName);
-      setCondition(existingAssessment.condition);
-      setTotalChickens(existingAssessment.totalChickens.toString());
-      setNotes(existingAssessment.notes || '');
-      setPhotos(existingAssessment.photos || []);
-    } else if (editId && navigator.onLine) {
-      // If it's not in Dexie, it might be a synced record from the server
-      axios.get(`/api/assessments/${editId}`).then(res => {
-        const item = res.data;
-        setLatitude(parseFloat(item.latitude));
-        setLongitude(parseFloat(item.longitude));
-        setAddress(item.address || '');
-        setCondition(item.condition || item.cond);
-        setTotalChickens(item.total_chickens || item.totalChickens);
-        setNotes(item.notes || '');
-        setPhotos(Array.isArray(item.photos) ? item.photos : []);
-        setAssessorName(item.assessor_name || item.assessorName);
-      }).catch(err => console.error("Failed to fetch assessment for edit:", err));
-    }
-  }, [existingAssessment, editId]);
+    let active = true;
+
+    const loadData = async () => {
+      if (!editId) return;
+
+      // Check if it exists in local Dexie first to prioritize local pending/edited changes
+      const local = await db.assessments.where('siteId').equals(editId).first();
+      
+      if (!active) return;
+
+      if (local) {
+        setLatitude(local.latitude);
+        setLongitude(local.longitude);
+        setAddress(local.address);
+        setAssessorName(local.assessorName);
+        setCondition(local.condition);
+        setTotalChickens(local.totalChickens.toString());
+        setNotes(local.notes || '');
+        setPhotos(local.photos || []);
+      } else if (navigator.onLine) {
+        // If not found locally, only then fetch from the server
+        try {
+          const res = await axios.get(`/api/assessments/${editId}`);
+          if (!active) return;
+          const item = res.data;
+          setLatitude(parseFloat(item.latitude));
+          setLongitude(parseFloat(item.longitude));
+          setAddress(item.address || '');
+          setCondition(item.condition || item.cond);
+          
+          const tc = item.total_chickens !== undefined ? item.total_chickens : item.totalChickens;
+          setTotalChickens(tc !== undefined && tc !== null ? String(tc) : '');
+          
+          setNotes(item.notes || '');
+          setPhotos(Array.isArray(item.photos) ? item.photos : []);
+          setAssessorName(item.assessor_name || item.assessorName);
+        } catch (err) {
+          console.error("Failed to fetch assessment for edit:", err);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      active = false;
+    };
+  }, [editId]);
 
   // Step 1: Location
   const [isLocating, setIsLocating] = useState(false);
@@ -216,11 +240,17 @@ export default function NewAssessment() {
         syncedAt: null,
       };
 
-      if (editId && existingAssessment) {
-        await db.assessments.update(existingAssessment.id!, assessment);
-      } else {
-        await db.assessments.put(assessment);
+      if (editId) {
+        if (existingAssessment) {
+          assessment.id = existingAssessment.id;
+        } else {
+          const parsedId = parseInt(editId);
+          if (!isNaN(parsedId)) {
+            assessment.id = parsedId;
+          }
+        }
       }
+      await db.assessments.put(assessment);
       if (navigator.vibrate) {
         navigator.vibrate(50);
       }
@@ -366,11 +396,17 @@ export default function NewAssessment() {
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">Total Number of Chickens</label>
         <input
-          type="number"
+          type="text"
           inputMode="numeric"
-          min="0"
+          pattern="[0-9]*"
           value={totalChickens}
-          onChange={(e) => setTotalChickens(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            // Only allow digits to prevent letters, decimals, and negative signs
+            if (val === '' || /^\d+$/.test(val)) {
+              setTotalChickens(val);
+            }
+          }}
           placeholder="e.g., 500"
           className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none"
         />
