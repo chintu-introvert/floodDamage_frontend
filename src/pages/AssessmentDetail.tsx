@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import axios from 'axios';
 import { db } from '../db/db';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
-import { ChevronLeft, MapPin, User, Calendar, Edit, X, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
+import { ChevronLeft, MapPin, Calendar, Edit, X, CheckCircle2, Clock } from 'lucide-react';
 
 export default function AssessmentDetail() {
   const { id } = useParams<{ id: string }>();
@@ -56,7 +56,6 @@ export default function AssessmentDetail() {
         totalChickens: parseInt(item.total_chickens || item.totalChickens),
         photos: Array.isArray(item.photos) ? item.photos : [],
         notes: item.notes || '',
-        assessorName: item.assessor_name || item.assessorName,
         timestamp: item.created_at || item.timestamp,
         synced: true,
         syncedAt: item.synced_at || new Date().toISOString(),
@@ -207,14 +206,6 @@ export default function AssessmentDetail() {
             <div className="text-right">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Chickens</p>
               <p className="text-xl font-bold text-gray-900">{displayAssessment.totalChickens}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <User className="text-gray-400 shrink-0" size={20} />
-            <div>
-              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-0.5">Assessor</p>
-              <p className="text-gray-900 font-medium">{displayAssessment.assessorName}</p>
             </div>
           </div>
 

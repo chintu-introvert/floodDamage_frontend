@@ -1,18 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import axios from 'axios';
-import { db } from '../db/db';
-import { Wifi, WifiOff, RefreshCw, Download, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { db, type Assessment } from '../db/db';
+import { useAuth } from '../context/AuthContext';
+import { Wifi, WifiOff, RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
+
+export interface BackendSyncRecord {
+  id: number;
+  timestamp: string;
+  successful: number;
+  failed: number;
+  total: number;
+  userId: string;
+}
 
 export default function Sync() {
+  const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncTotal, setSyncTotal] = useState(0);
   const [syncResult, setSyncResult] = useState<{ success: number, failed: number } | null>(null);
 
-  const timeSince = (date: Date) => {
-    const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
+  // REST API Sync History state
+  const [syncHistory, setSyncHistory] = useState<BackendSyncRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const timeSince = (dateString: string) => {
+    const seconds = Math.floor((new Date().getTime() - new Date(dateString).getTime()) / 1000);
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
@@ -36,14 +51,37 @@ export default function Sync() {
     };
   }, []);
 
-  // Fetch data
+  // Fetch assessments awaiting sync locally from Dexie belonging to the logged-in user
   const unsyncedAssessments = useLiveQuery(
-    () => db.assessments.filter(a => !a.synced).toArray()
+    () => {
+      if (!user?.id) return Promise.resolve([] as Assessment[]);
+      return db.assessments
+        .filter(a => !a.synced && a.userId === user.id)
+        .toArray();
+    },
+    [user?.id]
   );
 
-  const syncHistory = useLiveQuery(
-    () => db.syncHistory.orderBy('timestamp').reverse().limit(5).toArray()
-  );
+  // Fetch sync history list from backend database
+  const fetchSyncHistory = useCallback(async () => {
+    if (!user) return;
+    try {
+      setLoadingHistory(true);
+      const res = await axios.get('/api/sync-history');
+      if (res.data && res.data.data) {
+        setSyncHistory(res.data.data);
+      }
+    } catch (error) {
+      console.error('Failed to retrieve sync history from backend database:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [user]);
+
+  // Load sync history on mount
+  useEffect(() => {
+    fetchSyncHistory();
+  }, [fetchSyncHistory]);
 
   const handleSync = async () => {
     if (!isOnline || !unsyncedAssessments || unsyncedAssessments.length === 0) return;
@@ -77,37 +115,25 @@ export default function Sync() {
       }
     }
 
-    // Record history
-    await db.syncHistory.add({
-      timestamp: new Date(),
-      successful: successCount,
-      failed: failedCount,
-      total: unsyncedAssessments.length
-    });
+    try {
+      // Record history directly in the MySQL backend database
+      await axios.post('/api/sync-history', {
+        successful: successCount,
+        failed: failedCount,
+        total: unsyncedAssessments.length
+      });
+      
+      // Refresh list from the backend database immediately
+      await fetchSyncHistory();
+    } catch (err) {
+      console.error('Failed to save sync log to backend database:', err);
+    }
 
     setSyncResult({ success: successCount, failed: failedCount });
     setSyncing(false);
   };
 
-  const handleExport = async () => {
-    try {
-      const allAssessments = await db.assessments.toArray();
-      const json = JSON.stringify(allAssessments, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
 
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `assessments_export_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert('Failed to export data.');
-    }
-  };
 
   return (
     <div className="p-4 max-w-md mx-auto min-h-screen pb-24">
@@ -180,18 +206,18 @@ export default function Sync() {
 
       {/* Sync History */}
       <div className="mb-8">
-        <h2 className="text-lg font-bold text-gray-900 mb-4 px-1">Recent Sync History</h2>
+        <h2 className="text-lg font-bold text-gray-900 mb-4 px-1">Recent Sync History (Database)</h2>
 
-        {syncHistory === undefined ? (
-          <div className="text-gray-500 text-sm px-1">Loading history...</div>
+        {loadingHistory ? (
+          <div className="text-gray-500 text-sm px-1 animate-pulse">Loading history...</div>
         ) : syncHistory.length === 0 ? (
           <div className="bg-white p-6 rounded-xl border border-gray-100 text-center text-gray-500 shadow-sm">
-            No previous sync records found.
+            No previous sync records found in the database.
           </div>
         ) : (
           <div className="space-y-3">
-            {syncHistory.map((record, idx) => (
-              <div key={record.id || idx} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
+            {syncHistory.map((record) => (
+              <div key={record.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Clock size={18} className="text-gray-400" />
                   <div>
@@ -219,20 +245,7 @@ export default function Sync() {
         )}
       </div>
 
-      {/* Export Utility */}
-      <div>
-        <h2 className="text-lg font-bold text-gray-900 mb-4 px-1">Data Management</h2>
-        <button
-          onClick={handleExport}
-          className="w-full bg-white hover:bg-gray-50 text-gray-700 p-4 rounded-xl flex items-center justify-center gap-2 border border-gray-200 transition-colors shadow-sm font-medium"
-        >
-          <Download size={20} className="text-gray-500" />
-          Export All Data as JSON
-        </button>
-        <p className="text-xs text-gray-500 text-center mt-3 px-4">
-          Exporting downloads a complete local backup of all assessments regardless of sync status.
-        </p>
-      </div>
+
     </div>
   );
 }

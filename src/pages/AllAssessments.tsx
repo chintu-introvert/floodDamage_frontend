@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import axios from 'axios';
-import { db } from '../db/db';
-import { Search, MapPin, Calendar, CheckCircle2, Clock, CloudDownload } from 'lucide-react';
+import { db, type Assessment } from '../db/db';
+import { useAuth } from '../context/AuthContext';
+import { Search, MapPin, Calendar, CheckCircle2, Clock } from 'lucide-react';
 
 export default function AllAssessments() {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isFetchingServer, setIsFetchingServer] = useState(false);
+  const [, setIsFetchingServer] = useState(false);
   const [serverData, setServerData] = useState<any[]>([]);
 
   useEffect(() => {
@@ -40,7 +42,6 @@ export default function AllAssessments() {
         totalChickens: parseInt(item.total_chickens || item.totalChickens),
         photos: Array.isArray(item.photos) ? item.photos : [],
         notes: item.notes || '',
-        assessorName: item.assessor_name || item.assessorName,
         timestamp: item.created_at || item.timestamp,
         synced: true,
         syncedAt: item.synced_at || new Date().toISOString(),
@@ -55,8 +56,17 @@ export default function AllAssessments() {
     }
   };
 
-  // Fetch only pending assessments from local DB
-  const localAssessments = useLiveQuery(() => db.assessments.filter(a => !a.synced).reverse().toArray());
+  // Fetch only pending assessments from local DB belonging to the logged-in user
+  const localAssessments = useLiveQuery(
+    () => {
+      if (!user?.id) return Promise.resolve([] as Assessment[]);
+      return db.assessments
+        .filter(a => !a.synced && a.userId === user.id)
+        .reverse()
+        .toArray();
+    },
+    [user?.id]
+  );
 
   // Combine local (pending) and server (synced) data, deduplicating by siteId
   const localPending = localAssessments || [];
@@ -98,18 +108,6 @@ export default function AllAssessments() {
             {totalCount} total ({pendingCount} pending sync)
           </p>
         </div>
-        <button
-          onClick={fetchFromServer}
-          disabled={isFetchingServer || !navigator.onLine}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors text-sm ${isFetchingServer || !navigator.onLine
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
-            }`}
-          title="Pull latest data from server"
-        >
-          <CloudDownload size={16} className={isFetchingServer ? 'animate-bounce' : ''} />
-          {isFetchingServer ? 'Pulling...' : 'Pull'}
-        </button>
       </div>
 
       <div className="relative mb-6">

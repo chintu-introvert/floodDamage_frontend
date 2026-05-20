@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { db } from '../db/db';
 import type { Assessment } from '../db/db';
+import { useAuth } from '../context/AuthContext';
 import { 
   MapPin, Loader2, Camera, X, ChevronLeft, ChevronRight, CheckCircle 
 } from 'lucide-react';
@@ -22,6 +23,7 @@ L.Icon.Default.mergeOptions({
 const TOTAL_STEPS = 4;
 
 export default function NewAssessment() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit');
@@ -32,12 +34,11 @@ export default function NewAssessment() {
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [address, setAddress] = useState('');
-  const [assessorName, setAssessorName] = useState('');
   const [condition, setCondition] = useState<'Good' | 'Moderate' | 'Bad' | null>(null);
   const [totalChickens, setTotalChickens] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
-  const [isEditing, setIsEditing] = useState(!!editId);
+  const isEditing = !!editId;
 
   // Load existing assessment if editing
   const existingAssessment = useLiveQuery(
@@ -60,7 +61,6 @@ export default function NewAssessment() {
         setLatitude(local.latitude);
         setLongitude(local.longitude);
         setAddress(local.address);
-        setAssessorName(local.assessorName);
         setCondition(local.condition);
         setTotalChickens(local.totalChickens.toString());
         setNotes(local.notes || '');
@@ -81,7 +81,6 @@ export default function NewAssessment() {
           
           setNotes(item.notes || '');
           setPhotos(Array.isArray(item.photos) ? item.photos : []);
-          setAssessorName(item.assessor_name || item.assessorName);
         } catch (err) {
           console.error("Failed to fetch assessment for edit:", err);
         }
@@ -136,7 +135,7 @@ export default function NewAssessment() {
           const MAX_WIDTH = 800;
           let width = img.width;
           let height = img.height;
-
+ 
           if (width > MAX_WIDTH) {
             height = Math.round((height * MAX_WIDTH) / width);
             width = MAX_WIDTH;
@@ -195,7 +194,6 @@ export default function NewAssessment() {
       if (!address.trim()) return 'Please enter the address.';
     }
     if (step === 2) {
-      if (!assessorName.trim()) return 'Please enter the assessor name.';
       if (!condition) return 'Please select a farm condition.';
       if (!totalChickens || isNaN(Number(totalChickens)) || Number(totalChickens) < 0) return 'Please enter a valid total number of chickens.';
     }
@@ -234,10 +232,10 @@ export default function NewAssessment() {
         totalChickens: Number(totalChickens),
         photos,
         notes,
-        assessorName,
         timestamp: new Date(),
         synced: false,
         syncedAt: null,
+        userId: user?.id || 'guest',
       };
 
       if (editId) {
@@ -340,17 +338,6 @@ export default function NewAssessment() {
   const renderStep2 = () => (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-900">Farm Condition</h2>
-
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Assessor Name</label>
-        <input
-          type="text"
-          value={assessorName}
-          onChange={(e) => setAssessorName(e.target.value)}
-          placeholder="Your name"
-          className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-        />
-      </div>
 
       <div className="space-y-3">
         <label className="block text-sm font-medium text-gray-700">Overall Condition</label>
@@ -479,11 +466,6 @@ export default function NewAssessment() {
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Location</h3>
           <p className="text-gray-900 font-medium">{address}</p>
           <p className="text-sm text-gray-500">{latitude?.toFixed(5)}, {longitude?.toFixed(5)}</p>
-        </div>
-        
-        <div className="p-4 border-b border-gray-100">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Assessor</h3>
-          <p className="text-gray-900 font-medium">{assessorName}</p>
         </div>
 
         <div className="p-4 border-b border-gray-100 flex justify-between items-center">

@@ -10,23 +10,14 @@ export interface Assessment {
   totalChickens: number;
   photos: string[];
   notes?: string;
-  assessorName: string;
   timestamp: Date;
   synced: boolean;
   syncedAt: Date | null;
-}
-
-export interface SyncHistory {
-  id?: number;
-  timestamp: Date;
-  successful: number;
-  failed: number;
-  total: number;
+  userId?: string; // Track who created this offline assessment
 }
 
 const db = new Dexie('FloodDB') as Dexie & {
   assessments: EntityTable<Assessment, 'id'>;
-  syncHistory: EntityTable<SyncHistory, 'id'>;
 };
 
 db.version(1).stores({
@@ -36,6 +27,21 @@ db.version(1).stores({
 db.version(2).stores({
   assessments: '++id, siteId, synced, timestamp',
   syncHistory: '++id, timestamp'
+});
+
+db.version(3).stores({
+  assessments: '++id, siteId, synced, timestamp',
+  syncHistory: '++id, timestamp, userId'
+});
+
+db.version(4).stores({
+  assessments: '++id, siteId, synced, timestamp, userId',
+  syncHistory: '++id, timestamp, userId'
+});
+
+db.version(5).stores({
+  assessments: '++id, siteId, synced, timestamp, userId',
+  syncHistory: null
 });
 
 export { db };
